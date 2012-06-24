@@ -1,0 +1,104 @@
+#!/bin/bash
+
+
+mydie () {
+  echo $*
+  exit 1
+}
+
+get_os_flavor() {
+  if [ -f /bin/rpm ]; then
+    echo "rhel"
+  elif [ -f /usr/bin/dpkg ]; then
+    echo "ubuntu"
+  fi
+}
+
+is_pkg_installed () {
+  [ $# -ne 1 ] && mydie "Please provide pkg name"
+
+  case $OSNAME in
+    'rhel')
+        rpm -qi $1 > /dev/null 2>&1
+        return $?
+        ;;
+    'ubuntu')
+        dpkg-query -W $1 > /dev/null 2>&1
+        return $?
+        ;;
+    *)
+        mydie "OS $OSNAME not managed by this tool"
+        ;;
+  esac
+}
+
+OSNAME=`get_os_flavor`
+
+# make sure python-boto is installed
+is_pkg_installed python-boto
+[ $? -ne 0 ] && mydie "python-boto not installed"
+
+# make sure ec2-metadata is installed
+which route53 > /dev/null 2>&1
+[ $? -ne 0 ] && mydie "route53 not found! package python-boto may be corrupted"
+
+# make sure ec2-metadata is installed
+which ec2-metadata > /dev/null 2>&1
+[ $? -ne 0 ] && mydie "ec2-metadata not found"
+
+# make sure fqdn is defined in config file
+FQDN=`egrep ^ITON_FQDN /opt/itontools/etc/itontools.cfg | cut -d= -f2`
+[ "x$FQDN" == "x" ] && mydie "FQDN not found in config file"
+
+# fetching ZONE_id from config file
+DNS_ZID=`egrep ^ITON_DNS_ZONE_ID /opt/itontools/etc/itontools.cfg | cut -d= -f2`
+[ "x$DNS_ZID" == "x" ] && mydie "ITON_DNS_ZONE_ID not found in config file"
+
+# fetching DNS TTL from config file
+DNS_TTL=`egrep ^ITON_DNS_TTL /opt/itontools/etc/itontools.cfg | cut -d= -f2`
+[ "x$DNS_TTL" == "x" ] && mydie "ITON_DNS_TTL not found in config file"
+
+# fetching DNS COMMENT from config file
+DNS_COMMENT=`egrep ^ITON_DNS_COMMENT /opt/itontools/etc/itontools.cfg | cut -d= -f2`
+[ "x$DNS_COMMENT" == "x" ] && mydie "ITON_DNS_COMMENT not found in config file"
+
+# fetching credentials
+AWS_ACCESS_KEY_ID=`egrep ^ITON_DNS_AKEY /opt/itontools/etc/itontools.cfg | cut -d= -f2`
+[ "x$AWS_ACCESS_KEY_ID" == "x" ] && mydie "ITON_DNS_AKEY not found in config file"
+
+AWS_SECRET_ACCESS_KEY=`egrep ^ITON_DNS_SKEY /opt/itontools/etc/itontools.cfg | cut -d= -f2`
+[ "x$AWS_SECRET_ACCESS_KEY" == "x" ] && mydie "ITON_DNS_SKEY not found in config file"
+
+CNAME=`ec2-metadata -p | awk '{print $2}'`
+PUBIP=`ec2-metadata -v | awk '{print $2}'`
+
+# Fetching current DNS record for fQDN
+route53 get $DNS_ZID | grep $FQDN | while read line; do
+  RNAME=`echo $line | awk '{print $1}'`
+  RTYPE=`echo $line | awk '{print $2}'`
+  RTTL=`echo $line | awk '{print $3}'`
+  RVAL=`echo $line | awk '{print $4}'`
+  RCOM=`echo $line | awk '{print $5}'`
+echo A=$FOUND_A
+  if [ "x$RTYPE" == "xCNAME" ]; then
+    NEW_VAL="$CNAME"
+  elif [ "x$RTYPE" == "xA" ]; then
+    NEW_VAL="$PUBIP"
+  else
+    continue
+  fi
+  cat <<EOT
+Fixing DNS record
+ - Current Record: Type=$RTYPE, TTL=$RTTL, VALUE=$RVAL
+ - Target  Record: Type=$RTYPE, TTL=$DNS_TTL, VALUE=$RVAL
+EOT
+  echo changing record
+  route53 del_record $DNS_ZID $RNAME $RTYPE $RVAL $RTTL $RCOM
+  route53 add_record $DNS_ZID $FQDN $RTYPE $NEW_VAL $DNS_TTL
+done
+
+# create missing record if not found
+#TT=`route53 get $DNS_ZID | grep -w $FQDN | grep -w A`
+#[ "x$TT" == "x" ] && route53 add_record $DNS_ZID $FQDN A $PUBIP $DNS_TTL
+#TT=`route53 get $DNS_ZID | grep -w $FQDN | grep -w CNAME`
+#[ "x$TT" == "x" ] && echo route53 add_record $DNS_ZID $FQDN CNAME "${CNAME}." $DNS_TTL
