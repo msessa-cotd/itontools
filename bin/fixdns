@@ -90,7 +90,7 @@ echo A=$FOUND_A
   cat <<EOT
 Fixing DNS record
  - Current Record: Type=$RTYPE, TTL=$RTTL, VALUE=$RVAL
- - Target  Record: Type=$RTYPE, TTL=$DNS_TTL, VALUE=$RVAL
+ - Target  Record: Type=$RTYPE, TTL=$DNS_TTL, VALUE=$NEW_VAL
 EOT
   echo changing record
   route53 del_record $DNS_ZID $RNAME $RTYPE $RVAL $RTTL $RCOM
@@ -98,7 +98,7 @@ EOT
 done
 
 # create missing record if not found
-#TT=`route53 get $DNS_ZID | grep -w $FQDN | grep -w A`
-#[ "x$TT" == "x" ] && route53 add_record $DNS_ZID $FQDN A $PUBIP $DNS_TTL
+TT=`route53 get $DNS_ZID | grep -w $FQDN | grep -w A`
+[ "x$TT" == "x" ] && route53 add_record $DNS_ZID $FQDN A $PUBIP $DNS_TTL
 #TT=`route53 get $DNS_ZID | grep -w $FQDN | grep -w CNAME`
 #[ "x$TT" == "x" ] && echo route53 add_record $DNS_ZID $FQDN CNAME "${CNAME}." $DNS_TTL
