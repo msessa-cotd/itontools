@@ -1,0 +1,7 @@
+#!/bin/sh
+
+ITONTOOLS=/opt/itontools
+PATH=$ITONTOOLS/bin:$PATH
+export PATH
+
+$ITONTOOLS/bin/fixdns > /tmp/itontools.log
