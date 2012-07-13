@@ -68,6 +68,7 @@ AWS_ACCESS_KEY_ID=`egrep ^ITON_DNS_AKEY /opt/itontools/etc/itontools.cfg | cut -
 
 AWS_SECRET_ACCESS_KEY=`egrep ^ITON_DNS_SKEY /opt/itontools/etc/itontools.cfg | cut -d= -f2`
 [ "x$AWS_SECRET_ACCESS_KEY" == "x" ] && mydie "ITON_DNS_SKEY not found in config file"
+export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 
 CNAME=`ec2-metadata -p | awk '{print $2}'`
 PUBIP=`ec2-metadata -v | awk '{print $2}'`
@@ -79,11 +80,11 @@ route53 get $DNS_ZID | grep $FQDN | while read line; do
   RTTL=`echo $line | awk '{print $3}'`
   RVAL=`echo $line | awk '{print $4}'`
   RCOM=`echo $line | awk '{print $5}'`
-echo A=$FOUND_A
-  if [ "x$RTYPE" == "xCNAME" ]; then
-    NEW_VAL="$CNAME"
-  elif [ "x$RTYPE" == "xA" ]; then
+#echo A=$FOUND_A
+  if [ "x$RTYPE" == "xA" ]; then
     NEW_VAL="$PUBIP"
+  elif [ "x$RTYPE" == "xCNAME" ]; then
+    NEW_VAL="$CNAME"
   else
     continue
   fi
@@ -98,7 +99,7 @@ EOT
 done
 
 # create missing record if not found
-TT=`route53 get $DNS_ZID | grep -w $FQDN | grep -w A`
-[ "x$TT" == "x" ] && route53 add_record $DNS_ZID $FQDN A $PUBIP $DNS_TTL
+#TT=`route53 get $DNS_ZID | grep -w $FQDN | grep -w A`
+#[ "x$TT" == "x" ] && route53 add_record $DNS_ZID $FQDN A $PUBIP $DNS_TTL
 #TT=`route53 get $DNS_ZID | grep -w $FQDN | grep -w CNAME`
 #[ "x$TT" == "x" ] && echo route53 add_record $DNS_ZID $FQDN CNAME "${CNAME}." $DNS_TTL
