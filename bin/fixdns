@@ -83,8 +83,8 @@ route53 get $DNS_ZID | grep $FQDN | while read line; do
 #echo A=$FOUND_A
   if [ "x$RTYPE" == "xA" ]; then
     NEW_VAL="$PUBIP"
-  elif [ "x$RTYPE" == "xCNAME" ]; then
-    NEW_VAL="$CNAME"
+#  elif [ "x$RTYPE" == "xCNAME" ]; then
+#    NEW_VAL="$CNAME"
   else
     continue
   fi
