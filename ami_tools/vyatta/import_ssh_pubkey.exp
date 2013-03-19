@@ -1,0 +1,35 @@
+#!/usr/bin/expect
+# Description:
+#    Script to set SSH access to the instance
+# Version:
+#    1.0
+# Author(s):
+#    Patrice LACHANCE (largely inspired by web results...)
+############################################################################
+set timeout 30
+spawn $env(SHELL)
+send "configure\r"
+expect -re  ".*# $"
+send "loadkey vyatta http://169.254.169.254/latest/meta-data/public-keys/0/openssh-key \r"
+expect {
+  -re "### 100.0%.*# $" {send "set service ssh disable-password-authentication \r"}
+  timeout {send_user "timeout @1\n"; exit}
+  eof {send_user "eof @1\n"; exit}
+}
+expect -re  ".*# $"
+send "commit\r"
+#expect -re  ".*# $"
+#send "save\r"
+expect -re  ".*# $"
+send "exit\r"
+expect {
+  -re ":\[~/\]\[#$\] " {send "cat ~vyatta/.ssh/authorized_keys\r"}
+  timeout {send_user "timeout @2\n"; exit}
+  eof {send_user "eof @2\n"; exit}
+}
+expect {
+  -re ":\[~/\]\[#$\] " {send "exit\r"}
+  timeout {send_user "timeout @3\n"; exit}
+  eof {send_user "eof @3\n"; exit}
+}
+#expect eof
