@@ -1,0 +1,24 @@
+#!/usr/bin/expect
+# Description:
+#    Script to import Vyatta configuration thru user-data interface
+# Version:
+#    1.0
+# Author(s):
+#    Patrice LACHANCE (largely inspired by web results...)
+############################################################################
+set timeout 60
+spawn $env(SHELL)
+send "configure\r"
+expect -re  ".*# $"
+send "load http://169.254.169.254/latest/user-data \r"
+expect {
+  "? \\\[no\\\] " {send "n\r"}
+  -re "### 100.0%.*# $" {send "commit  \r"}
+  timeout {send_user "Error: timeout\n"; exit}
+  eof {send_user "Error: eof\n"; exit}
+}
+#expect -re  ".*# $"
+#send "save\r"
+expect -re  ".*# $"
+send "exit\r"
+#expect eof
