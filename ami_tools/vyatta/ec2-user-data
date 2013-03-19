@@ -1,0 +1,110 @@
+#!/bin/bash
+
+### BEGIN INIT INFO
+# Provides:          ec2-user-data
+# Required-Start:    $network $local_fs $remote_fs $syslog $all
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:
+# Short-Description: Run EC2 user-data scripts
+# Description:       On first boot of EC2 instance, runs user-data if it starts with #!
+#
+### END INIT INFO
+
+# ec2-user-data - Run instance user-data if it looks like a script.
+#
+# Only retrieves and runs the user-data script once per instance.  If
+# you want the user-data script to run again (e.g., on the next boot)
+# then add this command in the user-data script:
+#   rm -f /var/ec2/ec2-run-user-data.*
+#
+# History:
+#
+#   2011-03-25 Eric Hammond <ehammond@thinksome.com>
+#   - Add LSB info to support update-rc.d
+#   - Improve check for compressed user-data
+#
+#   2010-01-07 Tom White
+#   - Add support for gzip-compressed user data
+#
+#   2008-05-16 Eric Hammond <ehammond@thinksome.com>
+#   - Initial version including code from Kim Scheibel, Jorge Oliveira
+#
+prog=$(basename $0)
+logger="logger -t $prog"
+curl="curl --retry 3 --silent --show-error --fail"
+instance_data_url=http://169.254.169.254/latest
+user_data_dir=/tmp/ec2
+
+# Wait until meta-data is available.
+perl -MIO::Socket::INET -e '
+ until(new IO::Socket::INET("169.254.169.254:80")){last if $count >=60;$count++;print"Waiting for meta-data...\n";sleep 1}
+'
+
+# Exit if we have already run on this instance (e.g., previous boot).
+ami_id=$($curl $instance_data_url/meta-data/ami-id)
+been_run_file=/var/ec2/$prog.$ami_id
+mkdir -p $(dirname $been_run_file)
+mkdir -p $user_data_dir
+mount -v -t tmpfs -o size=1G,nr_inodes=10k,mode=0755 tmpfs $user_data_dir
+if [ -f $been_run_file ]; then
+  $logger < $been_run_file
+  exit
+fi
+
+# Retrieve the instance user-data and run it if it looks like a script
+user_data_file=$(tempfile -d $user_data_dir --prefix ec2 --suffix .user-data --mode 700)
+$logger "Retrieving user-data"
+$curl -o $user_data_file $instance_data_url/user-data 2>&1 | $logger
+user_data_mime=$(file -b --mime-type $user_data_file)
+$logger "User date type $user_data_mime"
+if [[ $user_data_mime && $user_data_mime = 'application/x-gzip' ]]; then
+  $logger "Uncompressing gzip'd user-data"
+  echo  "Uncompressing gzip'd user-data"
+  mv $user_data_file $user_data_file.gz
+  gunzip $user_data_file.gz
+fi
+user_data_mime=$(file -b --mime-type $user_data_file)
+if [[ $user_data_mime && $user_data_mime = 'application/zip' ]]; then
+  $logger "Uncompressing zip'd user-data"
+  echo  "Uncompressing zip'd user-data"
+  mv $user_data_file $user_data_file.zip
+  unzip -o $user_data_file.zip -d $user_data_dir
+fi
+user_data_mime=$(file -b --mime-type $user_data_file)
+if [[ $user_data_mime && $user_data_mime = 'application/x-tar' ]]; then
+  $logger "Uncompressing tar'd user-data"
+  echo  "Uncompressing tar'd user-data"
+  mv $user_data_file $user_data_file.tar
+  tar -xf $user_data_file.tar -C $user_data_dir
+fi
+if [[ -f $user_data_dir/run.sh ]]; then
+ echo "Found run.sh! Try to executing"
+ head -1 $user_data_dir/run.sh
+//' $user_data_dir/run.sh
+ chmod +x $user_data_dir/run.sh
+ $user_data_dir/run.sh $user_data_dir
+ echo "user-data exit code: $?"
+ rm -f $user_data_file
+ umount -v -f $user_data_dir
+ rm -rf $user_data_dir
+ rm -f $been_run_file
+ exit
+fi
+
+if [ ! -s $user_data_file ]; then
+  $logger "No user-data available"
+  echo  "No user-data available"
+  echo "user-data was not available" > $been_run_file
+elif head -1 $user_data_file | egrep '^/\* vyatta-config'; then
+  echo "Plain vyatta config detected"
+  /etc/old-ec2-user-data /tmp/ec2 $user_data_file 2>&1 | logger -t "user-data"
+  $logger "user-data exit code: $?"
+else
+  echo "Unknown user-data type!"
+  $logger "Unknown user-data type!"
+fi
+rm -f $user_data_file
+umount -v -f $user_data_dir
+rm -rf $user_data_dir
+rm -f $been_run_file
